@@ -1,0 +1,3 @@
+[submodule "data/source/garcia-inpe-oilspill"]
+	path = data/source/garcia-inpe-oilspill
+	url = https://github.com/Garcia-INPE/oilspill-detection-dataset.git

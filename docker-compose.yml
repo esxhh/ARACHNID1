@@ -1,0 +1,77 @@
+services:
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-docker-local-development-secret-change-me}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-127.0.0.1,localhost,django}
+      DJANGO_DB_PATH: /data/ocean_eye.sqlite3
+    command: >-
+      sh -c "python backend/django/manage.py migrate --noinput &&
+      python backend/django/manage.py seed_demo &&
+      python backend/django/manage.py collectstatic --noinput &&
+      python -m uvicorn config.asgi:application --app-dir backend/django
+      --host 0.0.0.0 --port 8001"
+    volumes:
+      - ocean_eye_data:/data
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-docker-local-development-secret-change-me}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-127.0.0.1,localhost,fastapi}
+      DJANGO_DB_PATH: /data/ocean_eye.sqlite3
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434/api/generate}
+      SENTINEL_HUB_CLIENT_ID: ${SENTINEL_HUB_CLIENT_ID:-}
+      SENTINEL_HUB_CLIENT_SECRET: ${SENTINEL_HUB_CLIENT_SECRET:-}
+      SENTINEL_MONITOR_BBOX: ${SENTINEL_MONITOR_BBOX:-54,24,56,26}
+      SENTINEL_MONITOR_INTERVAL_SECONDS: ${SENTINEL_MONITOR_INTERVAL_SECONDS:-900}
+    command: python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - ocean_eye_data:/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      django:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      django:
+        condition: service_healthy
+      fastapi:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    volumes:
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["copilot"]
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  ocean_eye_data:
+  ollama_data:
