@@ -192,6 +192,10 @@ class SentinelSearchRequest(BaseModel):
 def health() -> dict:
     return {"status": "ok", "service": "arachnid-data-plane", "timestamp": datetime.now(timezone.utc).isoformat()}
 
+@app.get("/health")
+def render_health() -> dict:
+    return {"status": "ok"}
+
 
 @app.get("/api/status")
 def status() -> dict:
